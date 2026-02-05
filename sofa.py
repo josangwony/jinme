@@ -5,7 +5,10 @@ import platform
 import math
 
 # 1. 환경 설정 및 폰트 유지
-if platform.system() == 'Windows':
+if platform.system() == 'Linux':
+    # 1단계에서 설치한 나눔고딕을 사용합니다.
+    plt.rcParams['font.family'] = 'NanumGothic'
+elif platform.system() == 'Windows':
     plt.rcParams['font.family'] = 'Malgun Gothic'
 else:
     plt.rcParams['font.family'] = 'AppleGothic'
@@ -45,7 +48,7 @@ for code, info in ITEM_MASTER.items():
     if f"input_{code}" not in st.session_state: st.session_state[f"input_{code}"] = 0
     input_slots[code] = st.sidebar.number_input(f"[{code}] {info['name']} ({info['unit']}개 단위)", min_value=0, key=f"input_{code}", step=1)
 
-# 4. 백필링 로직 (자동 최적 방향 배치 적용)
+# 4. 백필링 로직 (빈 곳부터 채움)
 def plan_optimized_blocks(slots_dict):
     blocks = []
     temp_list = []
@@ -57,7 +60,7 @@ def plan_optimized_blocks(slots_dict):
     for code in all_req_slots:
         info = ITEM_MASTER[code]
         
-        # [수정 포인트] 자동 최적 방향 결정 로직
+        # 최적 방향 결정 로직
         if code == 'B':
              # B는 무조건 긴 쪽(W)을 높이로
              h, w = info['w'], info['d']
