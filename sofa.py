@@ -131,7 +131,7 @@ def draw_master_plan(ax, block_data, idx):
         ax.add_patch(patches.Rectangle((item['x']+2, item['y']+2), item['w']-4, item['h']-4, facecolor=info['color'], edgecolor='black', linewidth=1.5))
         # 텍스트 회전: 높이가 너비보다 길면 90도 회전하여 가독성 확보
         text_rot = 90 if item['h'] > item['w'] else 0
-        label = f"[{item['code']}] {info['name']}\n{info['w']} x {info['d']} x {info['t']}\n({info['unit']}개 생산)"
+        label = f"[{item['code']}] {info['name']}\n{info['w']} x {info['d']} x {info['t']}\n({info['unit']}개)"
         ax.text(item['x'] + item['w']/2, item['y'] + item['h']/2, label, ha='center', va='center', fontsize=9, fontweight='heavy', rotation=text_rot)
 
     yield_val = (block_data["actual_area"] / (total_w * total_h)) * 100
