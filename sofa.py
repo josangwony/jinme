@@ -4,7 +4,16 @@ import matplotlib.patches as patches
 import platform
 import math
 
-# 폰트 로드
+# -----------------------------
+# 0. 치수 입력 (하드코딩 제거)
+# -----------------------------
+TOTAL_W = 1172
+TOTAL_H = 2384
+MAIN_W = 680
+SIDE_W = TOTAL_W - MAIN_W
+SIDE_X = MAIN_W
+
+# 1. 폰트 로드
 if platform.system() == 'Linux':
     plt.rcParams['font.family'] = 'NanumGothic'
 elif platform.system() == 'Windows':
@@ -44,111 +53,151 @@ st.sidebar.header("📋 품목별 생산 수량 입력")
 
 input_slots = {}
 for code, info in ITEM_MASTER.items():
-    if f"input_{code}" not in st.session_state: st.session_state[f"input_{code}"] = 0
-    input_slots[code] = st.sidebar.number_input(f"[{code}] {info['name']} ({info['unit']}개 단위)", min_value=0, key=f"input_{code}", step=1)
+    if f"input_{code}" not in st.session_state:
+        st.session_state[f"input_{code}"] = 0
+    input_slots[code] = st.sidebar.number_input(
+        f"[{code}] {info['name']} ({info['unit']}개 단위)",
+        min_value=0,
+        key=f"input_{code}",
+        step=1
+    )
 
 # 4. 백필링 로직 (빈 곳부터 채움)
 def plan_optimized_blocks(slots_dict):
     blocks = []
     temp_list = []
+
     for code, count in slots_dict.items():
-        for _ in range(count): temp_list.append(code)
-    all_req_slots = sorted(temp_list, key=lambda x: ITEM_MASTER[x]['w'] * ITEM_MASTER[x]['d'], reverse=True)
-    
+        for _ in range(count):
+            temp_list.append(code)
+
+    all_req_slots = sorted(
+        temp_list,
+        key=lambda x: ITEM_MASTER[x]['w'] * ITEM_MASTER[x]['d'],
+        reverse=True
+    )
+
     for code in all_req_slots:
         info = ITEM_MASTER[code]
+
         # 가로/세로 중 높이를 덜 차지하는 방향 찾기
         orientations = [{'w': info['w'], 'h': info['d']}, {'w': info['d'], 'h': info['w']}]
+
         # B품목은 기존처럼 W를 높이로 고정
-        if code == 'B': orientations = [{'w': info['d'], 'h': info['w']}]
-        
+        if code == 'B':
+            orientations = [{'w': info['d'], 'h': info['w']}]
+
         best_placement = None
-        
-        # 1. 기존 블록의 좁은 Side 슬롯(492)에 들어가는 최적 방향 확인
+
+        # 1) 기존 블록 Side 슬롯 확인
         for opt in orientations:
             for block in blocks:
-                if opt['w'] <= 492 and opt['h'] <= 2384 - block["s_h"]:
+                if opt['w'] <= SIDE_W and opt['h'] <= TOTAL_H - block["s_h"]:
                     if best_placement is None or opt['h'] < best_placement['h']:
                         best_placement = {**opt, 'block': block, 'slot': 'Side'}
-        
-        # 2. 없으면 기존 블록의 Main 슬롯(680) 확인
+
+        # 2) 없으면 기존 블록 Main 슬롯 확인
         if not best_placement:
             for opt in orientations:
                 for block in blocks:
-                    if opt['w'] <= 680 and opt['h'] <= 2384 - block["m_h"]:
+                    if opt['w'] <= MAIN_W and opt['h'] <= TOTAL_H - block["m_h"]:
                         if best_placement is None or opt['h'] < best_placement['h']:
                             best_placement = {**opt, 'block': block, 'slot': 'Main'}
-        
-        # 3. 신규 블록 생성 시 높이가 가장 낮은 방향 선택
+
+        # 3) 신규 블록 생성
         if not best_placement:
-            # 가능한 옵션 중 높이(h)가 작은 순으로 정렬
-            valid_opts = sorted([o for o in orientations if o['w'] <= 1172], key=lambda x: x['h'])
+            valid_opts = sorted([o for o in orientations if o['w'] <= TOTAL_W], key=lambda x: x['h'])
+            if not valid_opts:
+                # 마스터 데이터가 블록 폭보다 큰 경우 방어
+                continue
+
             best_opt = valid_opts[0]
-            slot_type = "Main" if best_opt['w'] <= 680 else "Full"
-            
+            slot_type = "Main" if best_opt['w'] <= MAIN_W else "Full"
+
             new_block = {"m_h": 0, "s_h": 0, "items": [], "actual_area": 0}
+
+            item_record = {"code": code, "x": 0, "y": 0, "w": best_opt['w'], "h": best_opt['h'], "type": slot_type}
+
             if slot_type == "Main":
                 new_block["m_h"] = best_opt['h']
-                new_block["items"].append({"code": code, "x": 0, "y": 0, "w": best_opt['w'], "h": best_opt['h'], "type": "Main"})
+                item_record["type"] = "Main"
             else:
+                # 기존 로직 유지: Full이면 Main/Side 높이 모두 점유
                 new_block["m_h"] = new_block["s_h"] = best_opt['h']
-                new_block["items"].append({"code": code, "x": 0, "y": 0, "w": best_opt['w'], "h": best_opt['h'], "type": "Full"})
-            
-            new_block["actual_area"] += (info['w'] * info['d'])
+                item_record["type"] = "Full"
+
+            new_block["items"].append(item_record)
+
+            # ✅ (수정) 배치된 사각형 기준 면적 누적
+            new_block["actual_area"] += (item_record['w'] * item_record['h'])
+
             blocks.append(new_block)
+
         else:
-            # 찾은 최적 위치에 배치
             b = best_placement['block']
+
             if best_placement['slot'] == 'Side':
-                b["items"].append({"code": code, "x": 680, "y": b["s_h"], "w": best_placement['w'], "h": best_placement['h'], "type": "Side"})
+                item_record = {"code": code, "x": SIDE_X, "y": b["s_h"], "w": best_placement['w'], "h": best_placement['h'], "type": "Side"}
+                b["items"].append(item_record)
                 b["s_h"] += best_placement['h']
             else:
-                b["items"].append({"code": code, "x": 0, "y": b["m_h"], "w": best_placement['w'], "h": best_placement['h'], "type": "Main"})
+                item_record = {"code": code, "x": 0, "y": b["m_h"], "w": best_placement['w'], "h": best_placement['h'], "type": "Main"}
+                b["items"].append(item_record)
                 b["m_h"] += best_placement['h']
-            b["actual_area"] += (info['w'] * info['d'])
-            
+
+            # ✅ (수정) 배치된 사각형 기준 면적 누적
+            b["actual_area"] += (item_record['w'] * item_record['h'])
+
     return blocks
 
-# 5. 시각화 (W*D*H 표기 및 자동 회전 텍스트)
+# 5. 시각화
 def draw_master_plan(ax, block_data, idx):
-    total_w, total_h = 1172, 2384
-    ax.set_xlim(-250, 1400); ax.set_ylim(-200, 2800)
-    
+    ax.set_xlim(-250, 1400)
+    ax.set_ylim(-200, 2800)
+
     # 외곽 치수 가이드
-    ax.annotate('', xy=(0, 2450), xytext=(1172, 2450), arrowprops=dict(arrowstyle='<->', color='black', lw=1.5))
-    ax.text(586, 2520, f"W {total_w}", ha='center', fontsize=11, fontweight='bold')
-    ax.annotate('', xy=(-120, 0), xytext=(-120, 2384), arrowprops=dict(arrowstyle='<->', color='black', lw=1.5))
-    ax.text(-180, 1192, f"H {total_h}", va='center', rotation=90, fontsize=11, fontweight='bold')
+    ax.annotate('', xy=(0, 2450), xytext=(TOTAL_W, 2450),
+                arrowprops=dict(arrowstyle='<->', color='black', lw=1.5))
+    ax.text(TOTAL_W/2, 2520, f"W {TOTAL_W}", ha='center', fontsize=11, fontweight='bold')
+
+    ax.annotate('', xy=(-120, 0), xytext=(-120, TOTAL_H),
+                arrowprops=dict(arrowstyle='<->', color='black', lw=1.5))
+    ax.text(-180, TOTAL_H/2, f"H {TOTAL_H}", va='center', rotation=90, fontsize=11, fontweight='bold')
 
     # 구역 배경 및 빨간 점선
-    ax.add_patch(patches.Rectangle((0, 0), 680, 2384, facecolor='#F8F9FA', edgecolor='black', alpha=0.3, linestyle=':'))
-    ax.add_patch(patches.Rectangle((680, 0), 492, 2384, facecolor='#FFFBF0', edgecolor='black', alpha=0.3, linestyle=':'))
-    if not any(item['w'] > 680 for item in block_data["items"]):
-        ax.axvline(x=680, color='red', linestyle='--', linewidth=1.5)
+    ax.add_patch(patches.Rectangle((0, 0), MAIN_W, TOTAL_H, facecolor='#F8F9FA',
+                                   edgecolor='black', alpha=0.3, linestyle=':'))
+    ax.add_patch(patches.Rectangle((SIDE_X, 0), SIDE_W, TOTAL_H, facecolor='#FFFBF0',
+                                   edgecolor='black', alpha=0.3, linestyle=':'))
+
+    if not any(item['w'] > MAIN_W for item in block_data["items"]):
+        ax.axvline(x=MAIN_W, color='red', linestyle='--', linewidth=1.5)
 
     for item in block_data["items"]:
         info = ITEM_MASTER[item['code']]
-        ax.add_patch(patches.Rectangle((item['x']+2, item['y']+2), item['w']-4, item['h']-4, facecolor=info['color'], edgecolor='black', linewidth=1.5))
-        # 텍스트 회전: 높이가 너비보다 길면 90도 회전하여 가독성 확보
+        ax.add_patch(patches.Rectangle((item['x'] + 2, item['y'] + 2), item['w'] - 4, item['h'] - 4,
+                                       facecolor=info['color'], edgecolor='black', linewidth=1.5))
         text_rot = 90 if item['h'] > item['w'] else 0
         label = f"[{item['code']}] {info['name']}\n{info['w']} x {info['d']} x {info['t']}\n({info['unit']}개)"
-        ax.text(item['x'] + item['w']/2, item['y'] + item['h']/2, label, ha='center', va='center', fontsize=9, fontweight='heavy', rotation=text_rot)
+        ax.text(item['x'] + item['w'] / 2, item['y'] + item['h'] / 2, label,
+                ha='center', va='center', fontsize=9, fontweight='heavy', rotation=text_rot)
 
-    yield_val = (block_data["actual_area"] / (total_w * total_h)) * 100
-    ax.set_title(f"Block #{idx+1} (수율: {yield_val:.1f}%)", fontsize=15, fontweight='bold', pad=15)
+    yield_val = (block_data["actual_area"] / (TOTAL_W * TOTAL_H)) * 100
+    ax.set_title(f"Block #{idx + 1} (수율: {yield_val:.1f}%)", fontsize=15, fontweight='bold', pad=15)
     ax.axis('off')
 
 # 6. 대시보드 출력
 planned = plan_optimized_blocks(input_slots)
+
 if planned:
     active_items_count = sum(1 for count in input_slots.values() if count > 0)
-    avg_yield = sum((b['actual_area'] / (1172 * 2384)) * 100 for b in planned) / len(planned)
-    
+    avg_yield = sum((b['actual_area'] / (TOTAL_W * TOTAL_H)) * 100 for b in planned) / len(planned)
+
     col1, col2, col3 = st.columns(3)
     col1.metric("총 투입 블록", f"{len(planned)} 개")
     col2.metric("생산 품목수", f"{active_items_count} 종")
     col3.metric("평균 수율", f"{avg_yield:.1f} %")
-    
+
     st.divider()
     for row_idx in range(math.ceil(len(planned) / 3)):
         cols = st.columns(3)
@@ -161,5 +210,6 @@ if planned:
                     st.pyplot(fig)
 else:
     st.info("👈 왼쪽 사이드바에 수량을 입력하면 계산이 시작됩니다.\n\n☎️문의: 생산팀 조상원")
+
 st.write("---")
 st.caption("🚀 **Developed by Josangwon** | 📊 *Data-Driven Optimization for iloom*")
