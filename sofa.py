@@ -212,4 +212,3 @@ else:
     st.info("👈 왼쪽 사이드바에 수량을 입력하면 계산이 시작됩니다.\n\n☎️문의: 생산팀 조상원")
 
 st.write("---")
-st.caption("🚀 **Developed by Josangwon** | 📊 *Data-Driven Optimization for iloom*")
