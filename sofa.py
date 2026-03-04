@@ -9,7 +9,7 @@ import math
 # -----------------------------
 TOTAL_W = 1172
 TOTAL_H = 1930
-MAIN_W = 560
+MAIN_W = 680
 SIDE_W = TOTAL_W - MAIN_W
 SIDE_X = MAIN_W
 
