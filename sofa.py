@@ -5,11 +5,11 @@ import platform
 import math
 
 # -----------------------------
-# 0. 치수 입력 (하드코딩 제거)
+# 0. 치수 입력
 # -----------------------------
 TOTAL_W = 1172
-TOTAL_H = 2384
-MAIN_W = 680
+TOTAL_H = 1930
+MAIN_W = 560
 SIDE_W = TOTAL_W - MAIN_W
 SIDE_X = MAIN_W
 
